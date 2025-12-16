@@ -7,27 +7,37 @@ from sklearn.compose import ColumnTransformer
 from sklearn.preprocessing import OneHotEncoder
 from sklearn.pipeline import Pipeline
 from sklearn.ensemble import RandomForestClassifier
-from imblearn.over_sampling import SMOTE
-from imblearn.pipeline import Pipeline as ImbPipeline
+from sklearn.metrics import classification_report, confusion_matrix, accuracy_score
 
-# ======================
+st.set_page_config(page_title="Tracer Study Alumni", layout="wide")
+
+st.title("📊 Analisis Kesesuaian Bidang Alumni")
+
+# =========================
 # LOAD DATA
-# ======================
+# =========================
 @st.cache_data
 def load_data():
     return pd.read_excel("tracer_studi.xlsx")
 
 df = load_data()
 
-# ======================
-# PREPROCESS
-# ======================
+st.subheader("📁 Data Awal")
+st.write(df.head())
+
+# =========================
+# PREPROCESSING
+# =========================
 def convert_income(x):
-    if pd.isna(x): return np.nan
+    if pd.isna(x):
+        return np.nan
     x = str(x)
-    if "1-3" in x: return 2000000
-    if "3-5" in x: return 4000000
-    if ">5" in x: return 6000000
+    if "1-3" in x:
+        return 2000000
+    if "3-5" in x:
+        return 4000000
+    if ">5" in x:
+        return 6000000
     return np.nan
 
 df["Pendapatan_num"] = df["Pendapatan_bersih"].apply(convert_income)
@@ -40,24 +50,32 @@ df_model = df[[
     "Kesesuaian_bidang"
 ]].dropna()
 
+st.subheader("🧹 Data Siap Pakai")
+st.write("Jumlah data:", df_model.shape[0])
+
 X = df_model.drop("Kesesuaian_bidang", axis=1)
 y = df_model["Kesesuaian_bidang"]
 
-# ======================
+# =========================
 # MODEL
-# ======================
+# =========================
 num_features = ["Pendapatan_num"]
 cat_features = ["ruang_lingkup_kerja", "Jenis_pekerjaan", "Lama_tunggu_kerja"]
 
-preprocess = ColumnTransformer([
-    ("num", "passthrough", num_features),
-    ("cat", OneHotEncoder(handle_unknown="ignore"), cat_features)
-])
+preprocessor = ColumnTransformer(
+    transformers=[
+        ("num", "passthrough", num_features),
+        ("cat", OneHotEncoder(handle_unknown="ignore"), cat_features)
+    ]
+)
 
-model = ImbPipeline([
-    ("prep", preprocess),
-    ("smote", SMOTE(random_state=42)),
-    ("rf", RandomForestClassifier(n_estimators=200, random_state=42))
+model = Pipeline(steps=[
+    ("preprocess", preprocessor),
+    ("clf", RandomForestClassifier(
+        n_estimators=200,
+        random_state=42,
+        class_weight="balanced"
+    ))
 ])
 
 X_train, X_test, y_train, y_test = train_test_split(
@@ -65,25 +83,35 @@ X_train, X_test, y_train, y_test = train_test_split(
 )
 
 model.fit(X_train, y_train)
+y_pred = model.predict(X_test)
 
-# ======================
-# STREAMLIT UI
-# ======================
-st.title("Prediksi Kesesuaian Bidang Alumni")
+# =========================
+# EVALUASI
+# =========================
+st.subheader("📈 Evaluasi Model")
 
-pendapatan = st.selectbox("Pendapatan", ["1-3 juta", "3-5 juta", ">5 juta"])
-ruang = st.selectbox("Ruang Lingkup Kerja", X["ruang_lingkup_kerja"].unique())
-jenis = st.selectbox("Jenis Pekerjaan", X["Jenis_pekerjaan"].unique())
-lama = st.selectbox("Lama Tunggu Kerja", X["Lama_tunggu_kerja"].unique())
+st.write("Accuracy:", accuracy_score(y_test, y_pred))
+st.write("Confusion Matrix:")
+st.write(confusion_matrix(y_test, y_pred))
 
-if st.button("Prediksi"):
-    input_df = pd.DataFrame([{
-        "Pendapatan_num": convert_income(pendapatan),
-        "ruang_lingkup_kerja": ruang,
-        "Jenis_pekerjaan": jenis,
-        "Lama_tunggu_kerja": lama
-    }])
+st.text("Classification Report:")
+st.text(classification_report(y_test, y_pred))
 
-    hasil = model.predict(input_df)[0]
-    st.success(f"Hasil Prediksi: **{hasil}**")
+# =========================
+# FEATURE IMPORTANCE
+# =========================
+feature_names = (
+    model.named_steps["preprocess"]
+    .get_feature_names_out()
+)
+
+importances = model.named_steps["clf"].feature_importances_
+
+df_importance = pd.DataFrame({
+    "Feature": feature_names,
+    "Importance": importances
+}).sort_values(by="Importance", ascending=False)
+
+st.subheader("⭐ Faktor Paling Mempengaruhi")
+st.dataframe(df_importance.head(10))
 
