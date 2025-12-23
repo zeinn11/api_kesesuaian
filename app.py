@@ -16,7 +16,7 @@ st.title("📊 Analisis Kesesuaian Bidang Alumni")
 # =========================
 # LOAD DATA
 # =========================
-@st.cache_data
+@st.cache_data (ttl=60)
 def load_data():
     return pd.read_excel("tracer_studi.xlsx")
 
@@ -114,4 +114,5 @@ df_importance = pd.DataFrame({
 
 st.subheader("⭐ Faktor Paling Mempengaruhi")
 st.dataframe(df_importance.head(10))
+
 
